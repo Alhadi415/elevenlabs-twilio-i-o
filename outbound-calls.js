@@ -1,5 +1,7 @@
 import WebSocket from "ws";
 import Twilio from "twilio";
+import pcmConvert from "pcm-convert";
+import { Buffer } from "buffer";
 
 export function registerOutboundRoutes(fastify) {
   // Check for required environment variables
@@ -187,23 +189,43 @@ export function registerOutboundRoutes(fastify) {
                 case "audio":
                   if (streamSid) {
                     if (message.audio?.chunk) {
-                      const audioData = {
-                        event: "media",
-                        streamSid,
-                        media: {
-                          payload: message.audio.chunk
-                        }
-                      };
-                      ws.send(JSON.stringify(audioData));
+                      try {
+                        // Convert from PCM to μ-law
+                        const pcmBuffer = Buffer.from(message.audio.chunk, "base64");
+                        // Convert PCM 16-bit to μ-law
+                        const ulawBuffer = pcmConvert(pcmBuffer, 's16le', 'ulaw');
+                        const convertedBase64 = ulawBuffer.toString("base64");
+
+                        const audioData = {
+                          event: "media",
+                          streamSid,
+                          media: {
+                            payload: convertedBase64
+                          }
+                        };
+                        ws.send(JSON.stringify(audioData));
+                      } catch (e) {
+                        console.error("[Audio Conversion Error]", e);
+                      }
                     } else if (message.audio_event?.audio_base_64) {
-                      const audioData = {
-                        event: "media",
-                        streamSid,
-                        media: {
-                          payload: message.audio_event.audio_base_64
-                        }
-                      };
-                      ws.send(JSON.stringify(audioData));
+                      try {
+                        // Convert from PCM to μ-law
+                        const pcmBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
+                        // Convert PCM 16-bit to μ-law
+                        const ulawBuffer = pcmConvert(pcmBuffer, 's16le', 'ulaw');
+                        const convertedBase64 = ulawBuffer.toString("base64");
+
+                        const audioData = {
+                          event: "media",
+                          streamSid,
+                          media: {
+                            payload: convertedBase64
+                          }
+                        };
+                        ws.send(JSON.stringify(audioData));
+                      } catch (e) {
+                        console.error("[Audio Conversion Error]", e);
+                      }
                     }
                   } else {
                     console.log("[ElevenLabs] Received audio but no StreamSid yet");
