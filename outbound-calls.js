@@ -118,14 +118,31 @@ export function registerOutboundRoutes(fastify) {
       let callSid = null;
       let conversationId = null;
       let elevenLabsWs = null;
-      let customParameters = null;  // Add this to store parameters
+      let customParameters = null;
       let webhook = null;
       let externalId = null;
       let conversationHistory = [];
 
       // Handle WebSocket errors
       ws.on('error', console.error);
- 
+
+      // Function to convert PCM to μ-law
+      function convertPcmToMulaw(base64Audio) {
+        try {
+          const pcmBuffer = Buffer.from(base64Audio, "base64");
+
+          // Define input and output formats precisely
+          const inputFormat = { channels: 1, sampleRate: 16000, bitDepth: 16, signed: true };
+          const outputFormat = { channels: 1, sampleRate: 8000, bitDepth: 8, signed: false, float: false, interleaved: true };
+
+          const ulawBuffer = pcmConvert(pcmBuffer, inputFormat, outputFormat);
+          return ulawBuffer.toString("base64");
+        } catch (e) {
+          console.error("[Audio Conversion Error]", e);
+          return null;
+        }
+      }
+
     // Function to send webhook without axios
     const sendWebhook = async (event, data) => {
       console.log('URL WEBHOOK');
@@ -189,13 +206,8 @@ export function registerOutboundRoutes(fastify) {
                 case "audio":
                   if (streamSid) {
                     if (message.audio?.chunk) {
-                      try {
-                        // Convert from PCM to μ-law
-                        const pcmBuffer = Buffer.from(message.audio.chunk, "base64");
-                        // Convert PCM 16-bit to μ-law
-                        const ulawBuffer = pcmConvert(pcmBuffer, 's16le', 'ulaw');
-                        const convertedBase64 = ulawBuffer.toString("base64");
-
+                      const convertedBase64 = convertPcmToMulaw(message.audio.chunk);
+                      if (convertedBase64) {
                         const audioData = {
                           event: "media",
                           streamSid,
@@ -204,17 +216,10 @@ export function registerOutboundRoutes(fastify) {
                           }
                         };
                         ws.send(JSON.stringify(audioData));
-                      } catch (e) {
-                        console.error("[Audio Conversion Error]", e);
                       }
                     } else if (message.audio_event?.audio_base_64) {
-                      try {
-                        // Convert from PCM to μ-law
-                        const pcmBuffer = Buffer.from(message.audio_event.audio_base_64, "base64");
-                        // Convert PCM 16-bit to μ-law
-                        const ulawBuffer = pcmConvert(pcmBuffer, 's16le', 'ulaw');
-                        const convertedBase64 = ulawBuffer.toString("base64");
-
+                      const convertedBase64 = convertPcmToMulaw(message.audio_event.audio_base_64);
+                      if (convertedBase64) {
                         const audioData = {
                           event: "media",
                           streamSid,
@@ -223,8 +228,6 @@ export function registerOutboundRoutes(fastify) {
                           }
                         };
                         ws.send(JSON.stringify(audioData));
-                      } catch (e) {
-                        console.error("[Audio Conversion Error]", e);
                       }
                     }
                   } else {
